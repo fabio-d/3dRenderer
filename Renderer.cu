@@ -282,8 +282,8 @@ void Renderer::drawTriangleNoTransform(const Point4 &p0, const Point4 &p1,
 	const float max_y = max(max(y0, y1), y2);
 
 	dim3 blockSize;
-	blockSize.x = 32;
-	blockSize.y = 32;
+	blockSize.x = 16;
+	blockSize.y = 16;
 
 	dim3 numBlocks;
 	numBlocks.x = ( (max_x - min_x + 1) + blockSize.x - 1 ) / blockSize.x;
