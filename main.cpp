@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <ctime>
 
 #include "Point.h"
 #include "Renderer.h"
@@ -12,6 +13,8 @@
 #include "GLRenderer.h"
 #include "HiddenLineRemovalRenderer.h"
 #include "WireframeRenderer.h"
+
+#define FPS_FRAMES_RESOLUTION 100
 
 static Renderer *renderer;
 
@@ -105,7 +108,22 @@ void Display()
 
 	glRasterPos2f(-1, -.95);
 	glColor4f(0.0f, 0.0f, 1.0f, 1.0f);
-	//showGlutString("Tasti:   [W]ireframe     [S]olid     Wireframe con qualcosa che somiglia a [H]idden Line Removal");
+
+	int currTick = glutGet(GLUT_ELAPSED_TIME);
+	static int lastTick = 0;
+	static int remainingFrames = 0;
+	static float elapsed_seconds = 0;
+
+	if (remainingFrames-- == 0)
+	{
+		elapsed_seconds = ( (lastTick == 0) ? 0.f : ( (currTick - lastTick) / 1000.f ) );
+		lastTick = currTick;
+		remainingFrames = FPS_FRAMES_RESOLUTION;
+	}
+
+	char buffer[100];
+	sprintf(buffer, "FPS: %.5g", FPS_FRAMES_RESOLUTION / elapsed_seconds);
+	showGlutString(buffer);
 
 	glutSwapBuffers();
 }
