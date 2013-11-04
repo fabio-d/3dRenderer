@@ -1,4 +1,14 @@
-SRCS := main.cpp Matrix.cpp Point.cpp Renderer.cu
+SRCS := main.cpp \
+	BaseRenderer.cpp \
+	CudaRenderer.cu \
+	DecoratorRenderer.cpp \
+	GLRenderer.cpp \
+	HiddenLineRemovalRenderer.cpp \
+	Matrix.cpp \
+	Point.cpp \
+	Renderer.cpp \
+	WireframeRenderer.cpp
+
 OBJS := $(patsubst %.cu,%.o,$(patsubst %.cpp,%.o,$(SRCS)))
 
 %.o: %.cu

@@ -1,60 +1,52 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
-#include <list>
-
-class Point4;
+class Matrix;
+class Point3;
 class Triangle;
 
-#include "Matrix.h"
-
+/* Interface for rendering engines */
 class Renderer
 {
 	public:
-		Renderer();
-		~Renderer();
-		void resize(int w, int h);
+		virtual ~Renderer();
 
-		enum DrawMode
-		{
-			Wireframe,
-			WireframeHiddenLineRemoval,
-			Solid
-		};
+		/* Resize the underlying buffers */
+		virtual void setGeometry(int width, int height) = 0;
 
-		void copyToScreen();
+		/* Flush local colorbuffer to GL framebuffer, if applicable */
+		virtual void flushToFramebuffer() = 0;
 
-		void resetMatrixStack();
-		void pushMatrix();
-		void popMatrix();
-		void multMatrix(const Matrix &mtx);
+		/* Empty the matrix stack and load identity matrix */
+		virtual void resetMatrixStack() = 0;
 
-		void setStrokeColor(char r, char g, char b);
-		void drawLine(const Point3 &p1, const Point3 &p2);
+		/* Push the current matrix in the matrix stack */
+		virtual void pushMatrix() = 0;
 
-		void setDrawMode(DrawMode newMode);
-		DrawMode getDrawMode() const;
+		/* Replace the current matrix with a matrix popped out of the
+		 * matrix stack */
+		virtual void popMatrix() = 0;
 
-		void setFillColor(char r, char g, char b);
-		void clearScreen();
-		void drawTriangle(const Triangle &triangle);
+		/* Replace the current matrix: currMatrix = mtx * currMatrix */
+		virtual void multMatrix(const Matrix &mtx) = 0;
 
-	private:
-		void drawLineNoTransform(const Point4 &p1, const Point4 &p2);
-		void drawTriangleNoTransform(const Point4 &vA, const Point4 &vB,
-			const Point4 &vC, char r, char g, char b);
+		/* Read current matrix */
+		virtual const Matrix& matrix() const = 0;
 
-		int buffer_w, buffer_h;
-		char *colorbuffer; // buffer_w * buffer_h * 3 canali (RGB)
-		float *depthbuffer; // buffer_w * buffer_h
+		/* Set color for subsequent operations */
+		virtual void setColor(char r, char g, char b) = 0;
 
-		DrawMode drawMode;
+		/* Read current color */
+		virtual void color(char *r, char *g, char *b) const = 0;
 
-		char stroke_r, stroke_g, stroke_b;
-		char fill_r, fill_g, fill_b;
+		/* Clear colorbuffer with current color and clear depthbuffer */
+		virtual void clearBuffers() = 0;
 
-		std::list<Matrix> mtxStack;
-		Matrix currMatrix;
+		/* Draw a line in 3D space */
+		virtual void drawLine(const Point3 &p1, const Point3 &p2) = 0;
+
+		/* Draw a triangle in 3D space */
+		virtual void drawTriangle(const Triangle &triangle) = 0;
 };
 
 #endif // RENDERER_H

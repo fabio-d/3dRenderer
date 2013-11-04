@@ -1,3 +1,5 @@
+#include "CudaRenderer.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -6,7 +8,6 @@
 #include <cuda_runtime.h>
 
 #include "Point.h"
-#include "Renderer.h"
 #include "Triangle.h"
 
 static __global__ void clearBuffersK(char *colorbuffer, float *depthbuffer,
@@ -27,7 +28,7 @@ static __global__ void clearBuffersK(char *colorbuffer, float *depthbuffer,
 
 static __global__ void drawLineK(char *colorbuffer, float *depthbuffer, float subdivisions,
 	float dx, float dy, float dz, float x1, float y1, float z1,
-	int w, char r, char g, char b)
+	int w, int h, char r, char g, char b)
 {
 	const float pos = (threadIdx.x + blockIdx.x * blockDim.x) / (subdivisions - 1);
 
@@ -35,6 +36,10 @@ static __global__ void drawLineK(char *colorbuffer, float *depthbuffer, float su
 	{
 		const int x = roundf(x1 + dx * pos);
 		const int y = roundf(y1 + dy * pos);
+
+		if (x < 0 || x > w || y < 0 || y > h)
+			return;
+
 		const float z = z1 + dz * pos;
 
 		const int i = x + y * w;
@@ -53,10 +58,13 @@ static __global__ void drawLineK(char *colorbuffer, float *depthbuffer, float su
 
 static __global__ void drawTriangleK(char *colorbuffer, float *depthbuffer,
 	int x0, int y0, float z0, int x1, int y1, float z1, int x2, int y2, float z2,
-	int min_x, int min_y, int w, char r, char g, char b)
+	int min_x, int min_y, int w, int h, char r, char g, char b)
 {
 	const int x = min_x + threadIdx.x + blockIdx.x * blockDim.x;
 	const int y = min_y + threadIdx.y + blockIdx.y * blockDim.y;
+
+	if (x < 0 || x > w || y < 0 || y > h)
+		return;
 
 	// Controlla che il punto sia interno ai tre lati del triangolo
 	const float prodscal01 = (x1-x0)*(y-y0) - (y1-y0)*(x-x0);
@@ -80,14 +88,12 @@ static __global__ void drawTriangleK(char *colorbuffer, float *depthbuffer,
 	}
 }
 
-Renderer::Renderer()
-: buffer_w(0), buffer_h(0), colorbuffer(0), drawMode(Solid),
-  stroke_r(0), stroke_g(0), stroke_b(0),
-  fill_r(0), fill_g(0), fill_b(0)
+CudaRenderer::CudaRenderer()
+: buffer_w(0), buffer_h(0), colorbuffer(0)
 {
 }
 
-void Renderer::resize(int w, int h)
+void CudaRenderer::setGeometry(int w, int h)
 {
 	fprintf(stderr, "Buffer ridimensionato a %dx%d\n", w, h);
 
@@ -113,15 +119,17 @@ void Renderer::resize(int w, int h)
 
 	buffer_w = w;
 	buffer_h = h;
+
+	normMatrix = Matrix::translate(1, 1, 0) * Matrix::scale(buffer_w / 2.f, buffer_h / 2.f, 1);
 }
 
-void Renderer::copyToScreen()
+void CudaRenderer::flushToFramebuffer()
 {
 	const int buffsize = buffer_w * buffer_h * 3;
 	char * temp = (char*)malloc(buffsize);
 	if (temp == 0)
 	{
-		fprintf(stderr, "memoria esaurita in copyToScreen\n");
+		fprintf(stderr, "memoria esaurita in flushToFramebuffer\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -138,94 +146,18 @@ void Renderer::copyToScreen()
 	free(temp);
 }
 
-void Renderer::resetMatrixStack()
+void CudaRenderer::clearBuffers()
 {
-	mtxStack.clear();
-	currMatrix = Matrix::scale(buffer_h / 4.f, buffer_h / 4.f, 1) * Matrix::translate(buffer_w / 2.f, buffer_h / 2.f, 0);
-}
+	char r, g, b;
+	color(&r, &g, &b);
 
-void Renderer::pushMatrix()
-{
-	mtxStack.push_back(currMatrix);
-}
-
-void Renderer::popMatrix()
-{
-	currMatrix = mtxStack.back();
-	mtxStack.pop_back();
-}
-
-void Renderer::multMatrix(const Matrix &mtx)
-{
-	currMatrix = mtx * currMatrix;
-}
-
-void Renderer::drawTriangle(const Triangle &t)
-{
-	if (drawMode == Solid || drawMode == WireframeHiddenLineRemoval)
-	{
-		drawTriangleNoTransform(
-			Point4(t.vA) * currMatrix,
-			Point4(t.vB) * currMatrix,
-			Point4(t.vC) * currMatrix,
-			fill_r, fill_g, fill_b);
-	}
-
-	if (drawMode == Wireframe || drawMode == WireframeHiddenLineRemoval)
-	{
-		drawLine(t.vA, t.vB);
-		drawLine(t.vB, t.vC);
-		drawLine(t.vC, t.vA);
-	}
-}
-
-void Renderer::setDrawMode(DrawMode newMode)
-{
-	drawMode = newMode;
-}
-
-Renderer::DrawMode Renderer::getDrawMode() const
-{
-	return drawMode;
-}
-
-void Renderer::setStrokeColor(char r, char g, char b)
-{
-	stroke_r = r;
-	stroke_g = g;
-	stroke_b = b;
-}
-
-void Renderer::setFillColor(char r, char g, char b)
-{
-	fill_r = r;
-	fill_g = g;
-	fill_b = b;
-}
-
-void Renderer::drawLine(const Point3 &p1, const Point3 &p2)
-{
-	drawLineNoTransform(Point4(p1) * currMatrix, Point4(p2) * currMatrix);
-}
-
-Renderer::~Renderer()
-{
-	if (colorbuffer != 0)
-	{
-		cudaFree(colorbuffer);
-		cudaFree(depthbuffer);
-	}
-}
-
-void Renderer::clearScreen()
-{
 	const int npixels = buffer_w * buffer_h;
 
 	const int blockSize = 32;
 	const int numBlocks = (npixels + blockSize - 1) / blockSize;
 
 	clearBuffersK<<<numBlocks, blockSize>>>(colorbuffer, depthbuffer,
-		npixels, fill_r, fill_g, fill_b);
+		npixels, r, g, b);
 
 	cudaError_t err = cudaThreadSynchronize();
 	if (err != cudaSuccess)
@@ -235,8 +167,38 @@ void Renderer::clearScreen()
 	}
 }
 
-void Renderer::drawLineNoTransform(const Point4 &p1, const Point4 &p2)
+void CudaRenderer::drawLine(const Point3 &p1, const Point3 &p2)
 {
+	const Matrix mtx = matrix() * normMatrix;
+
+	drawLineNoTransform(Point4(p1) * mtx, Point4(p2) * mtx);
+}
+
+void CudaRenderer::drawTriangle(const Triangle &t)
+{
+	const Matrix mtx = matrix() * normMatrix;
+
+	const Point4 tA = Point4(t.vA) * mtx;
+	const Point4 tB = Point4(t.vB) * mtx;
+	const Point4 tC = Point4(t.vC) * mtx;
+
+	drawTriangleNoTransform(tA, tB, tC);
+}
+
+CudaRenderer::~CudaRenderer()
+{
+	if (colorbuffer != 0)
+	{
+		cudaFree(colorbuffer);
+		cudaFree(depthbuffer);
+	}
+}
+
+void CudaRenderer::drawLineNoTransform(const Point4 &p1, const Point4 &p2)
+{
+	char r, g, b;
+	color(&r, &g, &b);
+
 	const int x1 = roundf(p1.x / p1.t);
 	const int y1 = roundf(p1.y / p1.t);
 	const int x2 = roundf(p2.x / p2.t);
@@ -251,8 +213,8 @@ void Renderer::drawLineNoTransform(const Point4 &p1, const Point4 &p2)
 	const int numBlocks = (subdivisions + blockSize - 1) / blockSize;
 
 	drawLineK<<<numBlocks, blockSize>>>(colorbuffer, depthbuffer, subdivisions,
-		dx, dy, dz, x1, y1, p1.z, buffer_w,
-		stroke_r, stroke_g, stroke_b);
+		dx, dy, dz, x1, y1, p1.z, buffer_w, buffer_h,
+		r, g, b);
 
 	cudaError_t err = cudaThreadSynchronize();
 	if (err != cudaSuccess)
@@ -262,9 +224,12 @@ void Renderer::drawLineNoTransform(const Point4 &p1, const Point4 &p2)
 	}
 }
 
-void Renderer::drawTriangleNoTransform(const Point4 &p0, const Point4 &p1,
-	const Point4 &p2, char r, char g, char b)
+void CudaRenderer::drawTriangleNoTransform(const Point4 &p0, const Point4 &p1,
+	const Point4 &p2)
 {
+	char r, g, b;
+	color(&r, &g, &b);
+
 	const int x0 = roundf(p0.x / p0.t);
 	const int y0 = roundf(p0.y / p0.t);
 	const float z0 = p0.z;
@@ -291,5 +256,5 @@ void Renderer::drawTriangleNoTransform(const Point4 &p0, const Point4 &p1,
 
 	drawTriangleK<<<numBlocks, blockSize>>>(colorbuffer, depthbuffer,
 		x0, y0, z0, x1, y1, z1, x2, y2, z2,
-		min_x, min_y, buffer_w, r, g, b);
+		min_x, min_y, buffer_w, buffer_h, r, g, b);
 }
