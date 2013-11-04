@@ -7,6 +7,7 @@ DecoratorRenderer::DecoratorRenderer(Renderer *base)
 
 DecoratorRenderer::~DecoratorRenderer()
 {
+	delete base;
 }
 
 void DecoratorRenderer::setGeometry(int width, int height)

@@ -7,7 +7,7 @@
 class DecoratorRenderer : public Renderer
 {
 	public:
-		DecoratorRenderer(Renderer *base);
+		DecoratorRenderer(Renderer *base); // takes ownership
 		virtual ~DecoratorRenderer();
 
 		virtual void setGeometry(int width, int height);

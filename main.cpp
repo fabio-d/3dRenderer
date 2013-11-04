@@ -1,6 +1,7 @@
 #include <GL/glut.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <cmath>
 
 #include "Point.h"
@@ -155,11 +156,34 @@ int main(int argc, char** argv)
 {
 	// GLUT Window Initialization
 	glutInit(&argc, argv);
+
 	glutInitWindowSize(800, 600);
 	glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
 	glutCreateWindow("GLUT example");
 
-	renderer = new HiddenLineRemovalRenderer(new GLRenderer());
+	bool error = false;
+	if (argc != 2)
+		error = true;
+	else if (!strcmp("solidcuda", argv[1]))
+		renderer = new CudaRenderer();
+	else if (!strcmp("wirecuda", argv[1]))
+		renderer = new WireframeRenderer(new CudaRenderer());
+	else if (!strcmp("hlrcuda", argv[1]))
+		renderer = new HiddenLineRemovalRenderer(new CudaRenderer());
+	else if (!strcmp("solidgl", argv[1]))
+		renderer = new GLRenderer();
+	else if (!strcmp("wiregl", argv[1]))
+		renderer = new WireframeRenderer(new GLRenderer());
+	else if (!strcmp("hlrgl", argv[1]))
+		renderer = new HiddenLineRemovalRenderer(new GLRenderer());
+	else
+		error = true;
+
+	if (error)
+	{
+		fprintf(stderr, "Uso: %s <solidcuda | wirecuda | hlrcuda | solidgl | wiregl | hlrgl>\n", argv[0]);
+		return EXIT_FAILURE;
+	}
 
 	Reshape(800, 600);
 
@@ -177,5 +201,5 @@ int main(int argc, char** argv)
 
 	delete renderer;
 
-	return 0;
+	return EXIT_SUCCESS;
 }
